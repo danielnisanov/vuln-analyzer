@@ -1,3 +1,7 @@
-"""Report generation modules"""
+"""
+Report generation and formatting modules
+"""
+
 from .formatter import ReportFormatter
-__all__ = ["ReportFormatter"]
+
+__all__ = ['ReportFormatter']
