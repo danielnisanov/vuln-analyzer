@@ -227,7 +227,9 @@ class VulnerabilityExtractor:
                 r'sql.*\+.*user', r'query.*\+.*input', r'execute.*\+.*param'
             ],
             'Path Traversal': [
-                r'fopen\s*\([^,]*\.\.[^)]*\)', r'\.\./', r'\.\.\\',
+                r'fopen\s*\([^,)]*\.\.[^)]*\)',  # fopen with ..
+                r'open\s*\([^,)]*\.\.[^)]*\)',  # open with ..
+                r'access\s*\([^,)]*\.\.[^)]*\)',  # access with ..
             ]
         }
 
@@ -237,6 +239,13 @@ class VulnerabilityExtractor:
             for vuln_type, patterns in validation_patterns.items():
                 for pattern in patterns:
                     if re.search(pattern, line_clean, re.IGNORECASE):
+                        # Additional check for path traversal to avoid false positives
+                        if vuln_type == 'Path Traversal':
+                            # Only flag if it's actually a file operation, not just a string
+                            if not any(
+                                    file_op in line_clean for file_op in ['fopen', 'open', 'access', 'stat', 'chdir']):
+                                continue
+
                         vulnerabilities.append({
                             'line': i,
                             'severity': 'HIGH' if 'injection' in vuln_type.lower() else 'MEDIUM',

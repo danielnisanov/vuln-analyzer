@@ -8,40 +8,35 @@ import argparse
 import os
 import sys
 import json
-import time
 from pathlib import Path
 
-# Import from src package structure
-from src.analysis import (
-    ONNXLLMBackend,
-    CodeChunker,
-    VulnerabilityExtractor,
-    HeuristicAnalyzer,
-    VulnerabilityPrompter
-)
-from src.report import ReportFormatter
+# Add src to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from src.analysis.llm_backend import ONNXLLMBackend
+from src.analysis.chunker import CodeChunker
+from src.analysis.extractor import VulnerabilityExtractor
+from src.analysis.heuristics import HeuristicAnalyzer
+from src.report.formatter import ReportFormatter
 
 
 class VulnerabilityAnalyzer:
     """Main vulnerability analyzer class"""
 
-    def __init__(self, model_path="./models/phi-4", verbose=False, template="comprehensive"):
+    def __init__(self, model_path="./models/phi-4", verbose=False):
         """
         Initialize the analyzer
 
         Args:
             model_path (str): Path to the LLM model
             verbose (bool): Enable verbose output
-            template (str): Default analysis template
         """
         self.model_path = model_path
         self.verbose = verbose
-        self.template = template
 
         # Initialize components
         self.llm_backend = ONNXLLMBackend(model_path)
-        self.llm_backend.set_analysis_template(template)
-        self.chunker = CodeChunker(max_chunk_size=3000)  # Increased chunk size
+        self.chunker = CodeChunker(max_chunk_size=3000)
         self.extractor = VulnerabilityExtractor()
         self.heuristic_analyzer = HeuristicAnalyzer()
         self.formatter = ReportFormatter()
@@ -52,8 +47,7 @@ class VulnerabilityAnalyzer:
             'vulnerabilities': [],
             'statistics': {},
             'analysis_time': 0,
-            'chunks_analyzed': 0,
-            'template_used': template
+            'chunks_analyzed': 0
         }
 
     def load_model(self):
@@ -69,8 +63,7 @@ class VulnerabilityAnalyzer:
 
         return success
 
-    def analyze_file(self, file_path, output_format='text', output_file=None,
-                     include_fixes=False, template=None):
+    def analyze_file(self, file_path, output_format='text', output_file=None, include_fixes=False):
         """
         Analyze a C/C++ file for vulnerabilities
 
@@ -79,17 +72,12 @@ class VulnerabilityAnalyzer:
             output_format (str): Output format ('text', 'json', 'html')
             output_file (str): Optional output file path
             include_fixes (bool): Include suggested fixes
-            template (str): Analysis template to use
 
         Returns:
-            str: Analysis results
+            dict: Analysis results
         """
+        import time
         start_time = time.time()
-
-        # Set template if provided
-        if template:
-            self.llm_backend.set_analysis_template(template)
-            self.results['template_used'] = template
 
         # Validate file
         if not os.path.exists(file_path):
@@ -125,7 +113,7 @@ class VulnerabilityAnalyzer:
         all_vulnerabilities = []
 
         for i, chunk in enumerate(chunks):
-            if self.verbose and i % 10 == 0:  # Only print every 10th chunk to reduce noise
+            if self.verbose:
                 print(f"Analyzing chunk {i + 1}/{len(chunks)} ({chunk.chunk_type})")
 
             # LLM Analysis
@@ -173,18 +161,9 @@ class VulnerabilityAnalyzer:
         return output
 
     def _analyze_chunk_with_llm(self, chunk, filename):
-        """Analyze a chunk using the LLM with context-aware prompting"""
+        """Analyze a chunk using the LLM"""
         try:
-            # Create chunk info for context-aware prompting
-            chunk_info = {
-                'chunk_type': chunk.chunk_type,
-                'start_line': chunk.start_line,
-                'function_name': chunk.function_name if hasattr(chunk, 'function_name') else ''
-            }
-
-            # Use the new analyze_chunk method with context
-            result = self.llm_backend.analyze_chunk(chunk.content, chunk_info)
-
+            result = self.llm_backend.analyze_code_vulnerabilities(chunk.content, filename)
             if result:
                 return self.extractor.parse_llm_output(result, chunk.start_line)
             return []
@@ -195,10 +174,13 @@ class VulnerabilityAnalyzer:
 
     def _combine_vulnerabilities(self, llm_vulns, heuristic_vulns):
         """Combine LLM and heuristic analysis results"""
+        # For now, merge both lists
+        # In advanced implementation, would use confidence scoring
         return llm_vulns + heuristic_vulns
 
     def _post_process_vulnerabilities(self, vulnerabilities):
         """Post-process vulnerability list"""
+        # Filter out false positives and enhance descriptions
         filtered = []
 
         for vuln in vulnerabilities:
@@ -214,11 +196,8 @@ class VulnerabilityAnalyzer:
 
     def _is_likely_false_positive(self, vuln):
         """Check if vulnerability is likely a false positive"""
+        # Simple heuristics to reduce false positives
         description = vuln.get('description', '').lower()
-
-        # Skip generic null pointer warnings without context
-        if 'null pointer' in description and not vuln.get('context'):
-            return True
 
         # Skip very generic integer overflow warnings in safe contexts
         if 'integer overflow' in description and vuln.get('severity') == 'LOW':
@@ -228,10 +207,19 @@ class VulnerabilityAnalyzer:
             ]):
                 return True
 
+        # Skip generic null pointer warnings without context
+        if 'null pointer' in description and not vuln.get('context'):
+            return True
+
+        # Skip duplicate vulnerabilities on the same line
+        if vuln.get('line') == 0:  # Line 0 usually means couldn't determine exact location
+            return False  # Keep these for now but mark them differently
+
         return False
 
     def _enhance_vulnerability(self, vuln):
         """Enhance vulnerability with additional context"""
+        # Add CWE mappings, CVSS scores, etc.
         vuln_type = vuln.get('type', '').lower()
 
         cwe_mappings = {
@@ -241,10 +229,7 @@ class VulnerabilityAnalyzer:
             'format string': 'CWE-134',
             'integer overflow': 'CWE-190',
             'command injection': 'CWE-78',
-            'null pointer': 'CWE-476',
-            'race condition': 'CWE-362',
-            'double free': 'CWE-415',
-            'path traversal': 'CWE-22'
+            'null pointer': 'CWE-476'
         }
 
         for pattern, cwe in cwe_mappings.items():
@@ -256,6 +241,7 @@ class VulnerabilityAnalyzer:
 
     def _deduplicate_and_sort(self, vulnerabilities):
         """Remove duplicates and sort by line number and severity"""
+        # Remove duplicates based on line number and type
         seen = set()
         unique_vulns = []
 
@@ -295,11 +281,7 @@ class VulnerabilityAnalyzer:
             'memory leak': 'Ensure every malloc()/calloc() has a corresponding free()',
             'format string': 'Use printf("%s", user_input) instead of printf(user_input)',
             'command injection': 'Avoid system() calls with user input; use safer alternatives',
-            'integer overflow': 'Use appropriate data types and check bounds before arithmetic operations',
-            'null pointer': 'Always check pointers for NULL before dereferencing',
-            'double free': 'Set pointer to NULL after free() and check before freeing',
-            'race condition': 'Use proper synchronization primitives (mutexes, locks)',
-            'path traversal': 'Validate and sanitize file paths, use realpath() to resolve'
+            'integer overflow': 'Use appropriate data types and check bounds before arithmetic operations'
         }
 
         description = vuln.get('description', '').lower()
@@ -377,8 +359,7 @@ Examples:
   %(prog)s vulnerable_code.c
   %(prog)s --format json --output report.json source.cpp
   %(prog)s --verbose --fixes vulnerable.c
-  %(prog)s --template memory_focus file.c
-  %(prog)s --no-model input.c
+  %(prog)s --model ./custom_model input.c
         '''
     )
 
@@ -394,27 +375,9 @@ Examples:
                         help='Include suggested fixes in output')
     parser.add_argument('--no-model', action='store_true',
                         help='Skip LLM loading, use only rule-based analysis')
-    parser.add_argument('--template', '-t',
-                        choices=['comprehensive', 'quick_scan', 'memory_focus',
-                                 'input_validation', 'concurrency', 'cwe_mapping',
-                                 'with_fixes', 'owasp_check'],
-                        default='comprehensive',
-                        help='Analysis template to use (default: comprehensive)')
-    parser.add_argument('--list-templates', action='store_true',
-                        help='List available analysis templates')
     parser.add_argument('--config', help='Configuration file (JSON)')
 
     args = parser.parse_args()
-
-    # Handle list templates request
-    if args.list_templates:
-        prompter = VulnerabilityPrompter()
-        templates = prompter.get_template_names()
-        print("Available analysis templates:")
-        for template in templates:
-            info = prompter.get_template_info(template)
-            print(f"  - {template}: Max tokens: {info['max_tokens']}")
-        sys.exit(0)
 
     # Load configuration if provided
     config = {}
@@ -429,8 +392,7 @@ Examples:
     try:
         analyzer = VulnerabilityAnalyzer(
             model_path=args.model,
-            verbose=args.verbose,
-            template=args.template
+            verbose=args.verbose
         )
 
         # Load model unless skipped
@@ -442,14 +404,12 @@ Examples:
         # Analyze file
         if args.verbose:
             print(f"Starting analysis of: {args.file}")
-            print(f"Using template: {args.template}")
 
         result = analyzer.analyze_file(
             file_path=args.file,
             output_format=args.format,
             output_file=args.output,
-            include_fixes=args.fixes,
-            template=args.template
+            include_fixes=args.fixes
         )
 
         # Print to stdout if no output file specified
@@ -466,7 +426,6 @@ Examples:
             print(f"Risk Score: {stats['risk_score']}")
             print(f"Analysis time: {analyzer.results['analysis_time']:.2f}s")
             print(f"Chunks analyzed: {analyzer.results['chunks_analyzed']}")
-            print(f"Template used: {analyzer.results['template_used']}")
 
         # Cleanup
         analyzer.cleanup()
