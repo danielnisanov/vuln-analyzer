@@ -108,6 +108,11 @@ class HeuristicAnalyzer:
             if vuln:
                 vulnerabilities.append(vuln)
 
+            # Check for possible null-pointer dereferences (needs context)
+            np_vulns = self._check_null_pointer(lines, actual_line)
+            if np_vulns:
+                vulnerabilities.extend(np_vulns)
+
         # Analyze chunk as a whole
         vulnerabilities.extend(self._analyze_memory_management(chunk))
         vulnerabilities.extend(self._analyze_error_handling(chunk))
@@ -134,6 +139,13 @@ class HeuristicAnalyzer:
                 })
 
         return vulnerabilities
+
+    def _check_null_pointer(self, line: str, line_num: int) -> Dict[str, Any]:
+        # Only flag if it's actually a pointer dereference without prior check
+        if ('->' in line or '*' in line) and 'if' not in line:
+            # Check if there's a NULL check in previous lines
+            # More sophisticated logic needed here
+            pass
 
     def _check_format_strings(self, line: str, line_num: int) -> Dict[str, Any]:
         """Check for format string vulnerabilities"""
