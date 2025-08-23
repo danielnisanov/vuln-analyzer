@@ -4,7 +4,7 @@ A comprehensive static analysis tool for detecting security vulnerabilities in C
 ## Features
 - **Hybrid Analysis**: Combines AI-powered analysis (Phi-4 model) with rule-based vulnerability detection
 - **Offline Operation**: Works completely offline after initial setup
-- **Multiple Output Formats**: Text, JSON, and HTML reports
+- **Multiple Output Formats**: Text and JSON reports
 - **Comprehensive Coverage**: Detects buffer overflows, memory leaks, format string vulnerabilities, and more
 - **Smart Chunking**: Intelligently splits large files for efficient analysis
 - **Severity Classification**: Categorizes vulnerabilities by severity (Critical/High/Medium/Low)
@@ -15,108 +15,118 @@ A comprehensive static analysis tool for detecting security vulnerabilities in C
 The tool follows a modular architecture with clear separation of concerns:
 
 ```
-vulnerability-analyzer/
-├── main.py                     # CLI entry point and orchestration
-├── setup_model.py              # Model setup and download script
-├── src/
-│   ├── analysis/
-│   │   ├── llm_backend.py      # AI model integration (Phi-4)
-│   │   ├── chunker.py          # Code chunking and preprocessing
-│   │   ├── extractor.py        # Vulnerability pattern extraction
-│   │   └── heuristics.py       # Rule-based analysis engine
-│   └── report/
-│       └── formatter.py        # Report generation and formatting
+vuln-analyzer/
+├── cli.py                     # CLI entry point and orchestration
 ├── models/
 │   └── phi-4/                  # AI model files (after setup)
-└── tests/
-    └── data/                   # Test files
+├── src/
+│   ├── analysis/
+│   │   ├── chunker.py      # AI model integration (Phi-4)
+│   │   ├── extractor.py          # Code chunking and preprocessing
+│   │   ├── heuristics.py        # Vulnerability pattern extraction
+│   │   └── llm_backend.py       # Rule-based analysis engine
+│   └── report/
+│       └── formatter.py        # Report generation and formatting
+├── tests/
+│    └── data/                   # Test files
+├── README.md
+├── Report.md
+├── setup_model.py              # Model setup and download script
+├── test_offline.py
+└── test_phi4_load.py
+
 ```
 
 ### Core Components
 
-1. **VulnerabilityAnalyzer** (`main.py`): Main orchestrator that coordinates all components
+1. **VulnerabilityAnalyzer** (`cli.py`): Main orchestrator that coordinates all components
 2. **ONNXLLMBackend** (`llm_backend.py`): AI-powered analysis using Microsoft's Phi-4 model
 3. **CodeChunker** (`chunker.py`): Intelligent code segmentation for efficient processing
 4. **HeuristicAnalyzer** (`heuristics.py`): Rule-based vulnerability detection
 5. **VulnerabilityExtractor** (`extractor.py`): Pattern matching and vulnerability extraction
 6. **ReportFormatter** (`formatter.py`): Multi-format report generation
 
-### Analysis Pipeline
+## Offline Operation Guarantee
 
-```mermaid
-graph TD
-    A[Input C/C++ File] --> B[Code Chunking]
-    B --> C[LLM Analysis]
-    B --> D[Heuristic Analysis]
-    C --> E[Vulnerability Extraction]
-    D --> E
-    E --> F[Deduplication & Ranking]
-    F --> G[Report Generation]
-    G --> H[Output: Text/JSON/HTML]
-```
+This tool operates completely offline after initial setup:
+- **One-time setup requires internet** (run `setup_model.py`)
+- **After setup, NO internet connection is needed**
+- **All analysis happens locally on your machine**
+- **No data is ever sent to external servers**
 
-## Quick Start
+## Installation & Setup
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- pip package manager
-- Internet connection (for initial model setup only)
+- 8GB RAM minimum (16GB recommended for Phi-4)
+- 10GB disk space for model files
+- Internet connection (only for initial setup)
 
-### Installation
+### Step 1: Clone Repository
+```bash
+git clone https://github.com/danielnisanov/vuln-analyzer.git
+cd vuln-analyzer
+```
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd vulnerability-analyzer
-   ```
+### Step 2: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-2. **Install dependencies**:
-   ```bash
-   pip install onnxruntime transformers onnxruntime-genai numpy
-   ```
+### Step 3: Run Setup Script (Requires Internet)
+```bash
+# This downloads and prepares model files for offline use
+python setup_model.py
+```
 
-3. **Setup the AI model** (one-time, requires internet):
-   ```bash
-   python setup_model.py
-   ```
-   
-   This downloads the necessary tokenizer files. For full AI capabilities, you'll also need to:
-   - Download the Phi-4 ONNX model from [Hugging Face](https://huggingface.co/microsoft/phi-4)
-   - Place the `.onnx` file in `models/phi-4/`
+### Step 4: Verify Offline Operation
+```bash
+# Test that the tool works without internet
+python test_offline.py
+```
 
-4. **Verify offline operation**:
-   ```bash
-   python test_offline.py
-   ```
+**After setup is complete, the tool operates entirely offline.**
+
+## Offline Operation
+
+Once the setup is complete, the tool requires **NO internet connection**. All analysis is performed locally using:
+- Pre-downloaded Phi-4 ONNX model
+- Local tokenizer files  
+- Rule-based heuristics as fallback
+
+To ensure offline operation:
+1. Run `setup_model.py` once with internet
+2. All model files are stored in `./models/phi-4/`
+3. The tool will never attempt to download files during normal operation
+
+## Quick Start
 
 ### Basic Usage
 
 ```bash
 # Analyze a single file
-python main.py vulnerable_code.c
+python cli.py vulnerable_code.c
 
 # Verbose output with fixes
-python main.py --verbose --fixes vulnerable_code.c
+python cli.py --verbose --fixes vulnerable_code.c
 
 # Generate JSON report
-python main.py --format json --output report.json source.cpp
+python cli.py --format json --output report.json source.cpp
 
 # Rule-based analysis only (no AI model required)
-python main.py --no-model vulnerable_code.c
+python cli.py --no-model vulnerable_code.c
+
 ```
 
 ### Advanced Usage
 
 ```bash
 # Custom model path
-python main.py --model ./custom_model input.c
-
-# HTML report with fixes
-python main.py --format html --output report.html --fixes vulnerable.c
+python cli.py --model ./custom_model input.c
 
 # Configuration file
-python main.py --config config.json input.c
+python cli.py --config config.json input.c
 ```
 
 ## Supported Vulnerabilities
@@ -181,9 +191,6 @@ Risk Score: 21
 }
 ```
 
-### HTML Format
-Interactive HTML reports with syntax highlighting and detailed vulnerability information.
-
 ## Configuration
 
 Create a `config.json` file for advanced configuration:
@@ -222,7 +229,7 @@ ls -la models/phi-4/
 python test_offline.py
 
 # Use rule-based analysis only
-python main.py --no-model file.c
+python cli.py --no-model file.c
 ```
 
 ### Performance Optimization
@@ -246,16 +253,6 @@ The tool returns different exit codes based on findings:
 - `3`: Critical vulnerabilities found
 - `4`: Analysis error occurred
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 

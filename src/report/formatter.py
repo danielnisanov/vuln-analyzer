@@ -29,7 +29,7 @@ class ReportFormatter:
 
         Args:
             results (Dict): Analysis results
-            format_type (str): Output format ('text', 'json', 'html')
+            format_type (str): Output format ('text', 'json')
             include_fixes (bool): Include suggested fixes
             use_colors (bool): Use ANSI colors in text output
 
@@ -38,8 +38,6 @@ class ReportFormatter:
         """
         if format_type == 'json':
             return self._format_json(results)
-        elif format_type == 'html':
-            return self._format_html(results, include_fixes)
         else:  # text
             return self._format_text(results, include_fixes, use_colors)
 

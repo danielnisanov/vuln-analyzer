@@ -69,7 +69,7 @@ class VulnerabilityAnalyzer:
 
         Args:
             file_path (str): Path to the C/C++ file
-            output_format (str): Output format ('text', 'json', 'html')
+            output_format (str): Output format ('text', 'json')
             output_file (str): Optional output file path
             include_fixes (bool): Include suggested fixes
 
@@ -366,7 +366,7 @@ Examples:
     parser.add_argument('file', help='C/C++ source file to analyze')
     parser.add_argument('--model', '-m', default='./models/phi-4',
                         help='Path to LLM model directory (default: ./models/phi-4)')
-    parser.add_argument('--format', '-f', choices=['text', 'json', 'html'], default='text',
+    parser.add_argument('--format', '-f', choices=['text', 'json'], default='text',
                         help='Output format (default: text)')
     parser.add_argument('--output', '-o', help='Output file (default: stdout)')
     parser.add_argument('--verbose', '-v', action='store_true',
